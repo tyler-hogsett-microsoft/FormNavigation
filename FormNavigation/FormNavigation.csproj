@@ -43,7 +43,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="ths_\libraries\crm_sdk\get_client_url.js" />
-    <Content Include="ths_\libraries\crm_sdk\common\get_entity_set_name.js" />
     <Content Include="ths_\libraries\common\web\get_query_parameters.js" />
     <Content Include="ths_\libraries\crm_sdk\request.js" />
     <Content Include="ths_\libraries\crm_sdk\retrieve_version.js" />
