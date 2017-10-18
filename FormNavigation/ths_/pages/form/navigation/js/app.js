@@ -4,13 +4,16 @@
 
 window.formNavigation = (function () {
     var linkControls = [];
+    var linkControlMap = {};
 
     function onLoad() {
         var configuration = getConfiguration();
-        createLinks(configuration);
-        CrmSdk.retrieveVersion().then(function () {
-            refreshLinks();
-        });
+        CrmSdk.retrieveVersion()
+            .then(function () {
+                return createLinks(configuration);
+            }).then(function () {
+                refreshLinks();
+            });
     }
 
     function getConfiguration() {
@@ -26,59 +29,164 @@ window.formNavigation = (function () {
     }
 
     function applyDefaultConfiguration(configuration) {
-        ///TODO: Add "showAllLinks" functionality
-        /*
         if(configuration.showAllLinks === undefined) {
             configuration.showAllLinks = true;
         }
-        */
         if (configuration.links === undefined) {
             configuration.links = [];
         }
     }
     
     function createLinks(configuration) {
-        createLinkControls(configuration);
-        populateListElement();
+        return createLinkControls(configuration).then(function () {
+            populateListElement();
+            return Promise.resolve();
+        });
     }
 
     function createLinkControls(configuration) {
-        ///TODO: Add "showAllLinks" functionality
-        /*
-        if (configuration.showAllLinks) {
-            var configLinksAsDictionary = {};
-            for (var i = 0; i < configuration.links.length; i++) {
-                var link = configuration.links[i];
-                configLinksAsDictionary[link.navigationItemId] = link;
-            }
-            window.parent.Xrm.Page.ui.navigation.items.forEach(function (navigationItem) {
-                var linkControl;
-                var linkConfig = configLinksAsDictionary[navigationItem.getId()];
-                if (linkConfig !== undefined) {
-                    linkControl = createLinkControlFromLinkConfig(linkConfig);
-                } else {
-                    linkControl = createLinkControlFromNavigationItem(navigationItem);
-                }
-                linkControls.push(linkControl);
-            });
-        } 
-        */
         for (var i = 0; i < configuration.links.length; i++) {
             var linkConfig = configuration.links[i];
             createLinkControlFromLinkConfig(linkConfig);
         }
-    }
+        var promise;
+        if (configuration.showAllLinks) {
+            promise = CrmSdk.request("GET", ["/RelationshipDefinitions/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata?$filter=ReferencedEntity eq '", window.parent.Xrm.Page.data.entity.getEntityName(), "'&$select=SchemaName,ReferencingEntity,ReferencingAttribute"].join("")).then(
+	            function (relationshipRequest) {
+	                var relationships = JSON.parse(relationshipRequest.responseText).value;
 
-    /// TODO: Add functionality to create link from navigation item
-    /*
-    function createLinkControlFromNavigationItem(navigationItem) {
-        return {
-            navigationItemId: navigationItem.getId(),
-            label: navigationItem.getLabel(),
-            linkIndex: linkControls.length
-        };
+	                var countConfigurations = [];
+
+	                relationships.forEach(function (relationship) {
+	                    var navItemId = ["nav_", relationship.SchemaName].join("");
+	                    if (window.parent.Xrm.Page.ui.navigation.items.get(navItemId) !== null
+                            && !linkControlMap[navItemId]) {
+	                        countConfigurations.push({
+	                            navigationItemId: navItemId,
+	                            setupProperties: {
+	                                referencingEntity: relationship.ReferencingEntity,
+	                                referencingAttribute: relationship.ReferencingAttribute
+	                            }
+	                        });
+	                    }
+	                });
+
+	                return countConfigurations;
+	            }).then(
+	            function (countConfigurations) {
+	                var entityQueryParts = ["/EntityDefinitions?$select=LogicalName,PrimaryIdAttribute,EntitySetName&$filter="];
+	                var viewQueryParts = ["/savedqueries?$select=returnedtypecode,fetchxml&$filter=querytype eq 2 and isdefault eq true and ("];
+
+	                var entityQueryConditions = [];
+	                var viewQueryConditions = [];
+	                countConfigurations.forEach(function (configuration) {
+	                    entityQueryConditions.push(["LogicalName eq '", configuration.setupProperties.referencingEntity, "'"].join(""));
+	                    viewQueryConditions.push(["returnedtypecode eq '", configuration.setupProperties.referencingEntity, "'"].join(""));
+	                });
+
+	                entityQueryParts.push(entityQueryConditions.join(" or "));
+	                viewQueryParts.push(viewQueryConditions.join(" or "));
+	                viewQueryParts.push(")");
+
+	                var entityQuery = entityQueryParts.join("");
+	                var viewQuery = viewQueryParts.join("");
+
+	                return Promise.all([
+			            countConfigurations,
+			            CrmSdk.request("GET", entityQuery).then(function (request) {
+			                return JSON.parse(request.response).value;
+			            }),
+			            CrmSdk.request("GET", viewQuery).then(function (request) {
+			                return JSON.parse(request.response).value;
+			            }),
+	                ]);
+	            }).then(function (results) {
+	                var countConfigurations = results[0];
+	                var entities = results[1];
+	                var views = results[2];
+
+	                var configurationMap = {};
+
+	                countConfigurations.forEach(function (configuration) {
+	                    configurationMap[configuration.setupProperties.referencingEntity] = configuration;
+	                });
+
+	                entities.forEach(function (entity) {
+	                    var configuration = configurationMap[entity.LogicalName];
+	                    configuration.entitySetName = entity.EntitySetName;
+	                    configuration.setupProperties.primaryIdAttribute = entity.PrimaryIdAttribute;
+	                });
+
+	                views.forEach(function (view) {
+	                    var configuration = configurationMap[view.returnedtypecode];
+	                    configuration.setupProperties.originalFetchXml = view.fetchxml;
+	                });
+
+	                return countConfigurations;
+	            }).then(function (countConfigurations) {
+	                countConfigurations.forEach(function (configuration) {
+	                    var xmlDocument = new DOMParser().parseFromString(configuration.setupProperties.originalFetchXml, "text/xml");
+
+	                    var entityNode = xmlDocument.evaluate("/fetch/entity", xmlDocument, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null).singleNodeValue;
+
+	                    var filterResult = xmlDocument.evaluate("/fetch/entity/filter", xmlDocument, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null);
+	                    var currentFilter = filterResult.singleNodeValue;
+	                    var newFilter;
+	                    if (currentFilter == null || currentFilter.getAttribute("type") == "or") {
+	                        newFilter = xmlDocument.createElement("filter");
+	                        newFilter.setAttribute("type", "and");
+	                        if (currentFilter != null) {
+	                            newFilter.appendChild(currentFilter);
+	                        }
+	                        entityNode.appendChild(newFilter);
+	                    } else {
+	                        newFilter = currentFilter;
+	                    }
+	                    var conditionNode = xmlDocument.createElement("condition");
+	                    conditionNode.setAttribute("attribute", configuration.setupProperties.referencingAttribute);
+	                    conditionNode.setAttribute("operator", "eq");
+	                    conditionNode.setAttribute("value", window.parent.Xrm.Page.data.entity.getId());
+	                    newFilter.appendChild(conditionNode);
+
+	                    var unnecessaryNodes = xmlDocument.evaluate("/fetch/entity/attribute|/fetch/entity/order", xmlDocument, null, XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE, null);
+	                    for (var i = 0; i < unnecessaryNodes.snapshotLength; i++) {
+	                        var unnecessaryNode = unnecessaryNodes.snapshotItem(i);
+	                        unnecessaryNode.remove();
+	                    }
+
+	                    var primaryAttributeNode = xmlDocument.createElement("attribute");
+	                    primaryAttributeNode.setAttribute("name", configuration.setupProperties.primaryIdAttribute);
+	                    entityNode.appendChild(primaryAttributeNode);
+
+	                    configuration.fetchXml = xmlDocument.firstChild.outerHTML;
+	                    /// TODO: Get the Icon Path
+	                    configuration.iconPath = "test.png";
+	                    delete configuration.setupProperties;
+	                });
+	                console.warn("TODO: Get the Icon Path");
+	                return countConfigurations;
+	            }).then(function (countConfigurations) {
+	                countConfigurations.forEach(function(configuration) {
+	                    configuration.label = window.parent.Xrm.Page.ui.navigation.items.get(configuration.navigationItemId).getLabel();
+	                    linkControlMap[configuration.navigationItemId] = configuration;
+	                });
+	            });
+        } else {
+            promise = Promise.resolve();
+        }
+        return promise.then(function () {
+            window.parent.Xrm.Page.ui.navigation.items.forEach(function (navItem) {
+                var linkControl = linkControlMap[navItem.getId()];
+                if(!linkControl)
+                {
+                    return;
+                }
+                linkControl.linkIndex = linkControls.length;
+                linkControls.push(linkControl);
+            });
+            return Promise.resolve();
+        });
     }
-    */
 
     function createLinkControlFromLinkConfig(linkConfig) {
         var entityId = window.parent.Xrm.Page.data.entity.getId();
@@ -86,15 +194,14 @@ window.formNavigation = (function () {
             navigationItemId: linkConfig.navigationItemId,
             fetchXml: decodeURIComponent(linkConfig.fetchXml).replace("{id}", entityId),
             entitySetName: linkConfig.entitySetName,
-            iconPath: linkConfig.iconPath,
-            linkIndex: linkControls.length
+            iconPath: linkConfig.iconPath
         };
         if (linkConfig.label) {
             linkControl.label = linkConfig.label;
         } else {
             linkControl.label = window.parent.Xrm.Page.ui.navigation.items.get(linkControl.navigationItemId).getLabel();
         }
-        linkControls.push(linkControl);
+        linkControlMap[linkConfig.navigationItemId] = linkControl;
     }
 
     function populateListElement() {
@@ -134,7 +241,7 @@ window.formNavigation = (function () {
     }
 
     function refreshLinks() {
-        Promise.all(
+        return Promise.all(
             linkControls.map(
                 function (linkControl) {
                     return CrmSdk.request(
