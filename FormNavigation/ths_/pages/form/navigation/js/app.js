@@ -125,40 +125,99 @@ window.formNavigation = (function () {
 	                return countConfigurations;
 	            }).then(function (countConfigurations) {
 	                countConfigurations.forEach(function (configuration) {
-	                    var xmlDocument = new DOMParser().parseFromString(configuration.setupProperties.originalFetchXml, "text/xml");
+	                    if ("ActiveXObject" in window)
+	                    {
+	                        var xmlDocument = new ActiveXObject("Microsoft.XMLDOM");
+	                        xmlDocument.loadXML(configuration.setupProperties.originalFetchXml);
 
-	                    var entityNode = xmlDocument.evaluate("/fetch/entity", xmlDocument, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null).singleNodeValue;
+	                        var entityNode = xmlDocument.selectSingleNode("/fetch/entity");
 
-	                    var filterResult = xmlDocument.evaluate("/fetch/entity/filter", xmlDocument, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null);
-	                    var currentFilter = filterResult.singleNodeValue;
-	                    var newFilter;
-	                    if (currentFilter == null || currentFilter.getAttribute("type") == "or") {
-	                        newFilter = xmlDocument.createElement("filter");
-	                        newFilter.setAttribute("type", "and");
-	                        if (currentFilter != null) {
-	                            newFilter.appendChild(currentFilter);
+	                        var currentFilter = entityNode.selectSingleNode("filter");
+	                        var newFilter;
+	                        var attribute;
+	                        if (    currentFilter == null
+                                ||  (   (attribute = currentFilter.attributes.getNamedItem("type"))
+                                    &&  attribute.value === "or")) {
+	                            newFilter = xmlDocument.createElement("filter");
+	                            attribute = xmlDocument.createAttribute("type");
+	                            attribute.value = "and";
+	                            newFilter.attributes.setNamedItem(attribute);
+	                            if (currentFilter != null) {
+	                                newFilter.appendChild(currentFilter);
+	                            }
+	                            entityNode.appendChild(newFilter);
+	                        } else {
+	                            newFilter = currentFilter;
 	                        }
-	                        entityNode.appendChild(newFilter);
+
+	                        var conditionNode = xmlDocument.createElement("condition");
+
+	                        attribute = xmlDocument.createAttribute("attribute");
+	                        attribute.value = configuration.setupProperties.referencingAttribute;
+	                        conditionNode.attributes.setNamedItem(attribute);
+
+	                        attribute = xmlDocument.createAttribute("operator");
+	                        attribute.value = "eq";
+	                        conditionNode.attributes.setNamedItem(attribute);
+
+	                        attribute = xmlDocument.createAttribute("value");
+	                        attribute.value = window.parent.Xrm.Page.data.entity.getId();
+	                        conditionNode.attributes.setNamedItem(attribute);
+
+	                        newFilter.appendChild(conditionNode);
+
+	                        var unnecessaryNodes = entityNode.selectNodes("attribute|order");
+	                        for (var i = 0; i < unnecessaryNodes.length; i++) {
+	                            var unnecessaryNode = unnecessaryNodes[i];
+	                            entityNode.removeChild(unnecessaryNode);
+	                        }
+
+	                        var primaryAttributeNode = xmlDocument.createElement("attribute");
+
+	                        attribute = xmlDocument.createAttribute("name");
+	                        attribute.value = configuration.setupProperties.primaryIdAttribute;
+	                        primaryAttributeNode.attributes.setNamedItem(attribute);
+
+	                        entityNode.appendChild(primaryAttributeNode);
+
+	                        configuration.fetchXml = xmlDocument.xml;
 	                    } else {
-	                        newFilter = currentFilter;
+	                        var xmlDocument = new DOMParser().parseFromString(configuration.setupProperties.originalFetchXml, "text/xml");
+
+	                        var entityNode = xmlDocument.evaluate("/fetch/entity", xmlDocument, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null).singleNodeValue;
+
+	                        var filterResult = xmlDocument.evaluate("/fetch/entity/filter", xmlDocument, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null);
+	                        var currentFilter = filterResult.singleNodeValue;
+	                        var newFilter;
+	                        if (currentFilter == null || currentFilter.getAttribute("type") == "or") {
+	                            newFilter = xmlDocument.createElement("filter");
+	                            newFilter.setAttribute("type", "and");
+	                            if (currentFilter != null) {
+	                                newFilter.appendChild(currentFilter);
+	                            }
+	                            entityNode.appendChild(newFilter);
+	                        } else {
+	                            newFilter = currentFilter;
+	                        }
+	                        var conditionNode = xmlDocument.createElement("condition");
+	                        conditionNode.setAttribute("attribute", configuration.setupProperties.referencingAttribute);
+	                        conditionNode.setAttribute("operator", "eq");
+	                        conditionNode.setAttribute("value", window.parent.Xrm.Page.data.entity.getId());
+	                        newFilter.appendChild(conditionNode);
+
+	                        var unnecessaryNodes = xmlDocument.evaluate("/fetch/entity/attribute|/fetch/entity/order", xmlDocument, null, XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE, null);
+	                        for (var i = 0; i < unnecessaryNodes.snapshotLength; i++) {
+	                            var unnecessaryNode = unnecessaryNodes.snapshotItem(i);
+	                            unnecessaryNode.remove();
+	                        }
+
+	                        var primaryAttributeNode = xmlDocument.createElement("attribute");
+	                        primaryAttributeNode.setAttribute("name", configuration.setupProperties.primaryIdAttribute);
+	                        entityNode.appendChild(primaryAttributeNode);
+
+	                        configuration.fetchXml = xmlDocument.firstChild.outerHTML;
 	                    }
-	                    var conditionNode = xmlDocument.createElement("condition");
-	                    conditionNode.setAttribute("attribute", configuration.setupProperties.referencingAttribute);
-	                    conditionNode.setAttribute("operator", "eq");
-	                    conditionNode.setAttribute("value", window.parent.Xrm.Page.data.entity.getId());
-	                    newFilter.appendChild(conditionNode);
-
-	                    var unnecessaryNodes = xmlDocument.evaluate("/fetch/entity/attribute|/fetch/entity/order", xmlDocument, null, XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE, null);
-	                    for (var i = 0; i < unnecessaryNodes.snapshotLength; i++) {
-	                        var unnecessaryNode = unnecessaryNodes.snapshotItem(i);
-	                        unnecessaryNode.remove();
-	                    }
-
-	                    var primaryAttributeNode = xmlDocument.createElement("attribute");
-	                    primaryAttributeNode.setAttribute("name", configuration.setupProperties.primaryIdAttribute);
-	                    entityNode.appendChild(primaryAttributeNode);
-
-	                    configuration.fetchXml = xmlDocument.firstChild.outerHTML;
+	                    
 	                    /// TODO: Get the Icon Path
 	                    configuration.iconPath = "test.png";
 	                    delete configuration.setupProperties;
