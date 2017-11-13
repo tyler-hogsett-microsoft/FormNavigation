@@ -42,16 +42,16 @@
     <Folder Include="Properties\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="ths_\libraries\crm_sdk\get_client_url.js" />
-    <Content Include="ths_\libraries\common\web\get_query_parameters.js" />
-    <Content Include="ths_\libraries\crm_sdk\request.js" />
-    <Content Include="ths_\libraries\crm_sdk\retrieve_version.js" />
-    <Content Include="ths_\libraries\crm_sdk\version_manager.js" />
-    <Content Include="ths_\libraries\form\count_associated_entities\count_associated_entities.js" />
-    <Content Include="ths_\libraries\promise\promise.min.js" />
-    <Content Include="ths_\pages\form\navigation\css\style.css" />
-    <Content Include="ths_\pages\form\navigation\index.html" />
-    <Content Include="ths_\pages\form\navigation\js\app.js" />
+    <Content Include="libraries\crm_sdk\get_client_url.js" />
+    <Content Include="libraries\common\web\get_query_parameters.js" />
+    <Content Include="libraries\crm_sdk\request.js" />
+    <Content Include="libraries\crm_sdk\retrieve_version.js" />
+    <Content Include="libraries\crm_sdk\version_manager.js" />
+    <Content Include="libraries\form\count_associated_entities\count_associated_entities.js" />
+    <Content Include="libraries\promise\promise.min.js" />
+    <Content Include="pages\form\navigation\css\style.css" />
+    <Content Include="pages\form\navigation\index.html" />
+    <Content Include="pages\form\navigation\js\app.js" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
